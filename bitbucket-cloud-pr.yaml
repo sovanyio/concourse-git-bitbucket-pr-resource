@@ -1,0 +1,93 @@
+---
+resource_types:
+- name: git-bitbucket-pr
+  type: docker-image
+  source:
+    repository: sovanyio/concourse-git-bitbucket-pr-resource
+    tag: latest
+  params:
+    fetch_upstream: true
+    fetch: 
+
+resources:
+- name: cq
+  type: git-bitbucket-pr
+  source:
+    base_url: https://api.bitbucket.org
+    bitbucket_type: cloud
+    project: aarp_appdev
+    repository: cq
+    direction: incoming
+    username: ((git-username))
+    password: ((git-password))
+    git:
+      uri: https://bitbucket.org/aarp_appdev/cq
+      username: ((git-username))
+      password: ((git-password))
+- name: cq-progress-resource
+  type: git-bitbucket-pr
+  source:
+    base_url: https://api.bitbucket.org
+    bitbucket_type: cloud
+    project: aarp_appdev
+    repository: cq
+    direction: incoming
+    username: ((git-username))
+    password: ((git-password))
+    git:
+      uri: https://bitbucket.org/aarp_appdev/cq
+      username: ((git-username))
+      password: ((git-password))
+
+jobs:
+  - name: build-cq
+    public: true
+    plan:
+      - get: cq
+        trigger: true
+      - put: cq-progress-resource
+        params:
+          action: change-build-status
+          state: INPROGRESS
+          key: "build-$BUILD_ID"
+          name: "Concourse CI"
+          description: Building
+      - task: maven
+        config:
+          platform: linux
+          image_resource:
+            type: docker-image
+            source:
+              repository: maven
+              tag: 3.6.3-jdk-8
+          inputs:
+            - name: cq
+          run:
+            path: mvn
+            args:
+              - clean
+              - package
+            dir: cq
+          caches:
+            - path: .gradle/
+            - path: .m2/
+            - path: ./node_modules/
+            - path: /usr/local/share/.cache/yarn
+        on_failure:
+          put: cq
+          params:
+            action: change-build-status
+            state: FAILED
+            key: "build-$BUILD_ID"
+            name: "Concourse CI"
+            description: Failed. Click for details
+            url: "https://concourse.build-nonprod.pcf.aarp.net/teams/dev-techleads/pipelines/cq-gating-pipeline/jobs/$BUILD_JOB_NAME/builds/$BUILD_NAME"
+        on_success:
+          put: cq
+          params:
+            action: change-build-status
+            state: SUCCESSFUL
+            key: "build-$BUILD_ID"
+            name: "Concourse CI"
+            description: Success. Click for details.
+            url: "https://concourse.build-nonprod.pcf.aarp.net/teams/dev-techleads/pipelines/cq-gating-pipeline/jobs/$BUILD_JOB_NAME/builds/$BUILD_NAME"
