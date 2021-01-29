@@ -74,7 +74,7 @@ if [[ "${fetch_upstream}" != "false" ]]; then
         ')
     elif [[ "$bitbucket_type" == "cloud" ]]; then
         git_payload=$(echo "${git_payload}" | jq --slurpfile pr "${pr}" '
-            . * { params: { fetch: [ $pr[0].destination.branch.name|ltrimstr("refs/heads/") ] } }
+            . * { params: { fetch: [ $pr[0].destination.branch.name|ltrimstr("refs/heads/"), $pr[0].destination.branch.name|ltrimstr("refs/heads/") ] } }
         ')
     fi
 fi
