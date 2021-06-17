@@ -152,5 +152,5 @@ elif [[ "$bitbucket_type" == "cloud" ]]; then
         | map(select(if .title | test("wip"; "i") then false else true end))
         | sort_by(.updated_at)
         | map(del(.updated_at))
-        | .[-1] ]' >&3
+        | .[] ]' >&3
 fi
