@@ -17,6 +17,7 @@ password=$(jq -r '.source.password // ""' < ${payload})
 project=$(jq -r '.source.project // ""' < ${payload})
 repository=$(jq -r '.source.repository // ""' < ${payload})
 limit=$(jq -r '.source.limit // 100' < ${payload})
+pagelen=$(jq -r '.source.pagelen // 50' < ${payload})
 changes_limit=$(jq -r '.source.changes_limit // 100' < ${payload})
 source_branch=$(jq -r '.source.branch // ""' < ${payload})
 paths=$(jq -r '.source.paths // ""' < ${payload})
@@ -63,7 +64,7 @@ if [[ "$bitbucket_type" == "server" ]]; then
         version_updated_at=$(cat /tmp/pr-last-updated-at)
     fi
 
-    prs=$(request "/pull-requests?limit=${limit}&state=open${branch_param}${direction_param}" \
+    prs=$(request "/pull-requests?limit=${limit}&pagelen=${pagelen}&state=open${branch_param}${direction_param}" \
         | jq '
             .values
             | map({
@@ -112,7 +113,7 @@ elif [[ "$bitbucket_type" == "cloud" ]]; then
         curl -XPOST -sSLf -u "${oauth_id}:${oauth_secret}" -d grant_type=client_credentials $uri | jq -r '.access_token' > "${oauth_response}"
         authentication=(-H "Authorization: Bearer `cat $oauth_response`")
     fi
-    uri="${base_url}/2.0/repositories/${project}/${repository}/pullrequests?limit=${limit}&state=OPEN"
+    uri="${base_url}/2.0/repositories/${project}/${repository}/pullrequests?limit=${limit}&state=OPEN&pagelen=${pagelen}"
 
     # write response to file as feeding it to jq from a variable doesnt work properly: JSON looses linefeed format in variable
     response=$(mktemp /tmp/resource.XXXXXX)
