@@ -137,7 +137,8 @@ elif [[ "$bitbucket_type" == "cloud" ]]; then
 
         # get the commit date, which is when the PR last got updated code-wise.
         # the updated_on field in the PR also changes when comment added etc
-        date=$(curl -sSLf "${authentication[@]}" $commit_url | jq -r '.date')
+        # this commit url might 404, so we want to tolerate that here
+        date=$(curl -sSL "${authentication[@]}" $commit_url | jq -r '.date // ""')
 
         pr=$(jq -n --arg id "${id}" --arg title "${title}" --arg branch "${branch}" --arg commit "${commit}" --arg date "${date}" '[{id: $id, title: $title, branch: $branch, commit: $commit, updated_at: $date}]')
         prs=$(jq -n --argjson prs "${prs}" --argjson pr "${pr}"  '$prs + $pr')
