@@ -139,7 +139,7 @@ elif [[ "$bitbucket_type" == "cloud" ]]; then
         # the updated_on field in the PR also changes when comment added etc
         # this commit url might 404, so we want to tolerate that here
         date=$(curl -sSL "${authentication[@]}" $commit_url | jq -r '.date // ""')
-        if [[ !"${date}" ]]; then
+        if [[ ! "${date}" ]]; then
             # PR is invalid, skip it
             continue
         fi
