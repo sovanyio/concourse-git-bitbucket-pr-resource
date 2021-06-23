@@ -113,7 +113,7 @@ elif [[ "$bitbucket_type" == "cloud" ]]; then
         curl -XPOST -sSLf -u "${oauth_id}:${oauth_secret}" -d grant_type=client_credentials $uri | jq -r '.access_token' > "${oauth_response}"
         authentication=(-H "Authorization: Bearer `cat $oauth_response`")
     fi
-    uri="${base_url}/2.0/repositories/${project}/${repository}/pullrequests?limit=${limit}&state=OPEN&pagelen=${pagelen}"
+    uri="${base_url}/2.0/repositories/${project}/${repository}/pullrequests?limit=${limit}&state=OPEN&pagelen=${pagelen}&sort=-updated_on"
 
     # write response to file as feeding it to jq from a variable doesnt work properly: JSON looses linefeed format in variable
     response=$(mktemp /tmp/resource.XXXXXX)
@@ -134,18 +134,7 @@ elif [[ "$bitbucket_type" == "cloud" ]]; then
         title=$(echo "$pullrequest" | jq -r '.title')
         commit=$(echo "$pullrequest" | jq -r '.source.commit.hash')
         commit_url=$(echo "$pullrequest" | jq -r '.source.commit.links.self.href')
-
-        # get the commit date, which is when the PR last got updated code-wise.
-        # the updated_on field in the PR also changes when comment added etc
-        # this commit url might 404, so we want to tolerate that here
-        commit=$(curl -sSL "${authentication[@]}" $commit_url)
-        date=$(echo -E "${commit}" | jq -r '.date // ""')
-        if [[ ! "${date}" ]]; then
-            # PR is invalid, skip it
-            continue
-        fi
-
-        pr=$(jq -n --arg id "${id}" --arg title "${title}" --arg branch "${branch}" --arg commit "${commit}" --arg date "${date}" '[{id: $id, title: $title, branch: $branch, commit: $commit, updated_at: $date}]')
+        pr=$(jq -n --arg id "${id}" --arg title "${title}" --arg branch "${branch}" --arg commit "${commit}" '[{id: $id, title: $title, branch: $branch, commit: $commit}]')
         prs=$(jq -n --argjson prs "${prs}" --argjson pr "${pr}"  '$prs + $pr')
     done < <(jq -c '.[]' "${response}")
 
