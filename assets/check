@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # vim: set ft=sh
 
-set -euo pipefail
+set -euox pipefail
 
 exec 3>&1
 exec 1>&2
@@ -17,6 +17,7 @@ password=$(jq -r '.source.password // ""' < ${payload})
 project=$(jq -r '.source.project // ""' < ${payload})
 repository=$(jq -r '.source.repository // ""' < ${payload})
 limit=$(jq -r '.source.limit // 100' < ${payload})
+pagelen=$(jq -r '.source.pagelen // 50' < ${payload})
 changes_limit=$(jq -r '.source.changes_limit // 100' < ${payload})
 source_branch=$(jq -r '.source.branch // ""' < ${payload})
 paths=$(jq -r '.source.paths // ""' < ${payload})
@@ -44,7 +45,7 @@ fi
 if [[ "$bitbucket_type" == "server" ]]; then
     request() {
         uri="${base_url}/rest/api/1.0/projects/${project}/repos/${repository}${1}"
-        curl -sSL --fail -u "${username}:${password}" "$uri"
+        curl -sSLf -u "${username}:${password}" "$uri"
     }
 
     if [[ -n "${source_branch}" ]]; then
@@ -63,7 +64,7 @@ if [[ "$bitbucket_type" == "server" ]]; then
         version_updated_at=$(cat /tmp/pr-last-updated-at)
     fi
 
-    prs=$(request "/pull-requests?limit=${limit}&state=open${branch_param}${direction_param}" \
+    prs=$(request "/pull-requests?limit=${limit}&pagelen=${pagelen}&state=open${branch_param}${direction_param}" \
         | jq '
             .values
             | map({
@@ -82,7 +83,7 @@ if [[ "$bitbucket_type" == "server" ]]; then
         for id in $(jq -r '.[].id' <<< "$prs"); do
             uri="${base_url}/rest/api/1.0/projects/${project}/repos/${repository}/pull-requests/${id}/changes?limit=${changes_limit}"
 
-            changes=$(curl -sSL --fail -u "${username}:${password}" "${uri}" \
+            changes=$(curl -sSLf  -u "${username}:${password}" "${uri}" \
                 | jq --arg paths ^$paths '.values | map(.path.toString) | map(select(test($paths))) | any')
             [[ $changes != false ]] && ids+="${id},"
         done
@@ -109,14 +110,14 @@ elif [[ "$bitbucket_type" == "cloud" ]]; then
     if [[ -n "${oauth_id}" ]]; then
         oauth_response=$(mktemp /tmp/resource.XXXXXX)
         uri="${base_url}/site/oauth2/access_token"
-        curl -XPOST -sSL --fail -u "${oauth_id}:${oauth_secret}" -d grant_type=client_credentials $uri | jq -r '.access_token' > "${oauth_response}"
+        curl -XPOST -sSLf -u "${oauth_id}:${oauth_secret}" -d grant_type=client_credentials $uri | jq -r '.access_token' > "${oauth_response}"
         authentication=(-H "Authorization: Bearer `cat $oauth_response`")
     fi
-    uri="${base_url}/2.0/repositories/${project}/${repository}/pullrequests?limit=${limit}&state=OPEN"
+    uri="${base_url}/2.0/repositories/${project}/${repository}/pullrequests?limit=${limit}&state=OPEN&pagelen=${pagelen}"
 
     # write response to file as feeding it to jq from a variable doesnt work properly: JSON looses linefeed format in variable
     response=$(mktemp /tmp/resource.XXXXXX)
-    curl -sSL --fail "${authentication[@]}" $uri | jq -r ".values[0:$limit]" > "${response}"
+    curl -sSLf "${authentication[@]}" $uri | jq -r ".values[0:$limit]" > "${response}"
     if [[ "${direction}" == "incoming" ]]; then
         branch_object="destination"
     else
@@ -136,7 +137,13 @@ elif [[ "$bitbucket_type" == "cloud" ]]; then
 
         # get the commit date, which is when the PR last got updated code-wise.
         # the updated_on field in the PR also changes when comment added etc
-        date=$(curl -sL --fail "${authentication[@]}" $commit_url | jq -r '.date')
+        # this commit url might 404, so we want to tolerate that here
+        commit=$(curl -sSL "${authentication[@]}" $commit_url)
+        date=$(echo -E "${commit}" | jq -r '.date // ""')
+        if [[ ! "${date}" ]]; then
+            # PR is invalid, skip it
+            continue
+        fi
 
         pr=$(jq -n --arg id "${id}" --arg title "${title}" --arg branch "${branch}" --arg commit "${commit}" --arg date "${date}" '[{id: $id, title: $title, branch: $branch, commit: $commit, updated_at: $date}]')
         prs=$(jq -n --argjson prs "${prs}" --argjson pr "${pr}"  '$prs + $pr')
@@ -147,10 +154,9 @@ elif [[ "$bitbucket_type" == "cloud" ]]; then
         exit
     fi
 
-    # take the list of PRs | filter out containing "wip" in title | sort by update-date of commits | remove the date | pick latest PR, wrap as array for concourse
+    # take the list of PRs | filter out containing "wip" in title | sort by update-date of commits, wrap as array for concourse
     jq -n --argjson prs "${prs}" '[ $prs
         | map(select(if .title | test("wip"; "i") then false else true end))
         | sort_by(.updated_at)
-        | map(del(.updated_at))
-        | .[-1] ]' >&3
+        | .[] ]' >&3
 fi
