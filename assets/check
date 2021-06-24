@@ -138,8 +138,8 @@ elif [[ "$bitbucket_type" == "cloud" ]]; then
         # get the commit date, which is when the PR last got updated code-wise.
         # the updated_on field in the PR also changes when comment added etc
         # this commit url might 404, so we want to tolerate that here
-        commit=$(curl -sSL "${authentication[@]}" $commit_url)
-        date=$(echo -E "${commit}" | jq -r '.date // ""')
+        commit_details=$(curl -sSL "${authentication[@]}" $commit_url)
+        date=$(echo -E "${commit_details}" | jq -r '.date // ""')
         if [[ ! "${date}" ]]; then
             # PR is invalid, skip it
             continue
